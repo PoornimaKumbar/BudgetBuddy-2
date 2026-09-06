@@ -29,8 +29,8 @@ export default function Sidebar({
 
   let navItems = [
     {
-      label: 'Dashboard',
-      path: '/dashboard',
+      label: user?.role === 'admin' ? 'Admin Dashboard' : 'Dashboard',
+      path: user?.role === 'admin' ? '/admin' : '/dashboard',
       icon: LayoutDashboard,
     },
     {
@@ -58,6 +58,11 @@ export default function Sidebar({
       path: '/goals',
       icon: Target,
     },
+    {
+      label: user?.role === 'premium' || user?.role === 'admin' ? 'Advanced Analytics' : 'Analytics',
+      path: '/analytics',
+      icon: BarChart3,
+    },
   ];
 
   /*
@@ -71,28 +76,14 @@ export default function Sidebar({
   if (user?.role === 'premium' || user?.role === 'admin') {
     navItems.push(
       {
-        label: 'Advanced Analytics',
-        path: '/analytics',
-        icon: BarChart3,
-      },
-      {
-        label: 'Premium Reports',
+        label: 'Reports',
         path: '/reports',
         icon: BarChart3,
       }
     );
   }
 
-  /*
-   * Premium Dashboard is ADMIN ONLY.
-   */
-  if (user?.role === 'admin') {
-    navItems.push({
-      label: 'Premium Dashboard',
-      path: '/premium',
-      icon: Target,
-    });
-  }
+  
 
   navItems.push({
     label: 'My Profile',
@@ -100,16 +91,7 @@ export default function Sidebar({
     icon: User,
   });
 
-  /*
-   * Admin Dashboard is ADMIN ONLY.
-   */
-  if (user?.role === 'admin') {
-    navItems.push({
-      label: 'Admin Dashboard',
-      path: '/admin',
-      icon: ShieldCheck,
-    });
-  }
+  
 
   return (
     <>

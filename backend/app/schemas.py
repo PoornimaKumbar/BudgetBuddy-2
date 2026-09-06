@@ -81,7 +81,8 @@ class ChangePasswordRequest(BaseModel):
 
 
 class AccountDeleteRequest(BaseModel):
-    password: str = Field(..., min_length=1)
+    password: Optional[str] = None
+    otp: Optional[str] = None
 
 
 class Token(BaseModel):

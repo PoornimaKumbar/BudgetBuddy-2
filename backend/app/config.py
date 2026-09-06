@@ -2,8 +2,9 @@ import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql://postgres:postgres@127.0.0.1:5432/budgetbuddy_db"
-    SECRET_KEY: str = "budgetbuddy_super_secret_jwt_key_2026_finance_prod"
+    DATABASE_URL: str = "sqlite:///./budgetbuddy.db"
+    SECRET_KEY: str = "dev_secret_key_only_for_local_testing"
+    FRONTEND_URL: str = "http://localhost:5173"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     OTP_EXPIRE_MINUTES: int = 5

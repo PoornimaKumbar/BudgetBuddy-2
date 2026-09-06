@@ -79,15 +79,17 @@ function AppContent() {
           <Route path="/profile" element={<Profile />} />
           <Route path="/pricing" element={<Pricing />} />
 
-          {/* Premium & Admin Only Routes */}
+          {/* Accessible to all authenticated users */}
           <Route 
             path="/analytics" 
             element={
-              <ProtectedRoute allowedRoles={['premium', 'admin']}>
+              <ProtectedRoute>
                 <AnalyticsDashboard />
               </ProtectedRoute>
             } 
           />
+          
+          {/* Premium & Admin Only Routes */}
           <Route 
             path="/reports" 
             element={

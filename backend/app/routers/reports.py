@@ -1,6 +1,5 @@
 import io
 import datetime
-import calendar
 from typing import Dict, Any
 from calendar import month_name
 
@@ -8,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, extract
+from sqlalchemy import func
 
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
@@ -61,6 +60,7 @@ def get_month_date_range(
 
     Example:
     September 2026
+
     start = 2026-09-01 00:00:00
     end   = 2026-10-01 00:00:00
     """
@@ -102,11 +102,12 @@ def get_custom_date_range(
 ):
     """
     Converts YYYY-MM-DD values into:
-    start inclusive
-    end exclusive
 
-    This prevents transactions later in the end date
-    from being accidentally excluded.
+    start = inclusive
+    end   = exclusive
+
+    Adding one day to the end date means the complete
+    end date is included in the report.
     """
 
     start = datetime.datetime.strptime(
@@ -123,6 +124,51 @@ def get_custom_date_range(
     )
 
     return start, end
+
+
+def resolve_report_period(
+    month: int | None,
+    year: int | None,
+    start_date: str | None,
+    end_date: str | None,
+):
+    """
+    Resolves month/year for reports and exports.
+
+    Custom range:
+        month/year are optional.
+
+    Monthly report:
+        month/year are required.
+    """
+
+    # --------------------------------------------------------
+    # CUSTOM DATE RANGE
+    # --------------------------------------------------------
+
+    if start_date and end_date:
+
+        start_dt, end_dt = get_custom_date_range(
+            start_date,
+            end_date
+        )
+
+        return (
+            start_dt.month,
+            start_dt.year
+        )
+
+    # --------------------------------------------------------
+    # MONTHLY REPORT
+    # --------------------------------------------------------
+
+    if month is None or year is None:
+        raise ValueError(
+            "month and year are required when "
+            "start_date and end_date are not provided"
+        )
+
+    return month, year
 
 
 # ============================================================
@@ -146,11 +192,14 @@ def fetch_monthly_data(
     # --------------------------------------------------------
 
     if start_date and end_date:
+
         sd, ed = get_custom_date_range(
             start_date,
             end_date
         )
+
     else:
+
         sd, ed = get_month_date_range(
             month,
             year
@@ -187,6 +236,7 @@ def fetch_monthly_data(
     # --------------------------------------------------------
 
     if account_id is not None:
+
         inc_query = inc_query.filter(
             Income.account_id == account_id
         )
@@ -200,6 +250,7 @@ def fetch_monthly_data(
     # --------------------------------------------------------
 
     if category:
+
         inc_query = inc_query.filter(
             Income.source == category
         )
@@ -213,12 +264,15 @@ def fetch_monthly_data(
     # --------------------------------------------------------
 
     if tx_type:
+
         tx_type_lower = tx_type.lower()
 
         if tx_type_lower == "income":
+
             exp_query = exp_query.filter(False)
 
         elif tx_type_lower == "expense":
+
             inc_query = inc_query.filter(False)
 
     # --------------------------------------------------------
@@ -260,21 +314,36 @@ def fetch_monthly_data(
     cat_totals = {}
 
     for exp in exp_txs:
-        category_name = exp.category or "Other"
+
+        category_name = (
+            exp.category
+            or "Other"
+        )
 
         cat_totals[category_name] = (
-            cat_totals.get(category_name, 0.0)
+            cat_totals.get(
+                category_name,
+                0.0
+            )
             + float(exp.amount or 0)
         )
 
     category_spending = [
         {
             "category": cat,
-            "amount": round(amount, 2),
+            "amount": round(
+                amount,
+                2
+            ),
             "percentage": round(
-                (amount / exp_sum) * 100,
+                (
+                    amount
+                    / exp_sum
+                ) * 100,
                 1
-            ) if exp_sum > 0 else 0.0,
+            )
+            if exp_sum > 0
+            else 0.0,
         }
         for cat, amount in sorted(
             cat_totals.items(),
@@ -300,30 +369,38 @@ def fetch_monthly_data(
     budget_status = []
 
     for budget in budgets:
+
         try:
+
             metrics = calculate_budget_metrics(
                 budget,
                 db
             )
 
-            if hasattr(metrics, "model_dump"):
+            if hasattr(
+                metrics,
+                "model_dump"
+            ):
+
                 budget_status.append(
                     metrics.model_dump()
                 )
+
             else:
+
                 budget_status.append(
                     metrics.dict()
                 )
 
         except Exception:
-            # Fallback so one problematic budget
-            # does not break the entire report.
+
             monthly_limit = float(
                 getattr(
                     budget,
                     "monthly_limit",
                     0
-                ) or 0
+                )
+                or 0
             )
 
             budget_category = getattr(
@@ -339,7 +416,10 @@ def fetch_monthly_data(
             )
 
             utilization = (
-                (spent / monthly_limit) * 100
+                (
+                    spent
+                    / monthly_limit
+                ) * 100
                 if monthly_limit > 0
                 else 0
             )
@@ -357,7 +437,8 @@ def fetch_monthly_data(
                         utilization,
                         1
                     ),
-                    "is_exceeded": spent > monthly_limit,
+                    "is_exceeded":
+                        spent > monthly_limit,
                 }
             )
 
@@ -386,7 +467,10 @@ def fetch_monthly_data(
         )
 
         percentage = (
-            (current / target) * 100
+            (
+                current
+                / target
+            ) * 100
             if target > 0
             else 0
         )
@@ -436,15 +520,21 @@ def fetch_monthly_data(
         notifications.append(
             {
                 "id": notification.id,
-                "message": notification.message,
-                "type": notification.type,
-                "created_at": (
-                    created_at.strftime(
-                        "%d %B %Y, %I:%M %p"
-                    )
-                    if created_at
-                    else ""
-                ),
+
+                "message":
+                    notification.message,
+
+                "type":
+                    notification.type,
+
+                "created_at":
+                    (
+                        created_at.strftime(
+                            "%d %B %Y, %I:%M %p"
+                        )
+                        if created_at
+                        else ""
+                    ),
             }
         )
 
@@ -454,58 +544,90 @@ def fetch_monthly_data(
 
     transactions = []
 
-    # Income transactions
+    # --------------------------------------------------------
+    # INCOME TRANSACTIONS
+    # --------------------------------------------------------
+
     for income in inc_txs:
 
         transactions.append(
             {
-                "id": f"inc_{income.id}",
-                "type": "Income",
-                "date": income.date,
-                "description": (
-                    income.notes
-                    or income.source
-                    or "Income"
-                ),
-                "amount": float(
-                    income.amount or 0
-                ),
-                "debit": "-",
-                "credit": (
-                    f"₹{float(income.amount or 0):,.2f}"
-                ),
+                "id":
+                    f"inc_{income.id}",
+
+                "type":
+                    "Income",
+
+                "date":
+                    income.date,
+
+                "description":
+                    (
+                        income.notes
+                        or income.source
+                        or "Income"
+                    ),
+
+                "amount":
+                    float(
+                        income.amount or 0
+                    ),
+
+                "debit":
+                    "-",
+
+                "credit":
+                    (
+                        f"₹{float(income.amount or 0):,.2f}"
+                    ),
             }
         )
 
-    # Expense transactions
+    # --------------------------------------------------------
+    # EXPENSE TRANSACTIONS
+    # --------------------------------------------------------
+
     for expense in exp_txs:
 
         transactions.append(
             {
-                "id": f"exp_{expense.id}",
-                "type": "Expense",
-                "date": expense.date,
-                "description": (
-                    getattr(
-                        expense,
-                        "description",
-                        None
-                    )
-                    or getattr(
-                        expense,
-                        "title",
-                        None
-                    )
-                    or expense.category
-                    or "Expense"
-                ),
-                "amount": float(
-                    expense.amount or 0
-                ),
-                "debit": (
-                    f"₹{float(expense.amount or 0):,.2f}"
-                ),
-                "credit": "-",
+                "id":
+                    f"exp_{expense.id}",
+
+                "type":
+                    "Expense",
+
+                "date":
+                    expense.date,
+
+                "description":
+                    (
+                        getattr(
+                            expense,
+                            "description",
+                            None
+                        )
+                        or getattr(
+                            expense,
+                            "title",
+                            None
+                        )
+                        or expense.category
+                        or "Expense"
+                    ),
+
+                "amount":
+                    float(
+                        expense.amount or 0
+                    ),
+
+                "debit":
+                    (
+                        f"₹{float(expense.amount or 0):,.2f}"
+                    ),
+
+                "credit":
+                    "-",
             }
         )
 
@@ -519,7 +641,9 @@ def fetch_monthly_data(
 
     past_inc_query = (
         db.query(
-            func.sum(Income.amount)
+            func.sum(
+                Income.amount
+            )
         )
         .filter(
             Income.user_id == user_id,
@@ -529,13 +653,19 @@ def fetch_monthly_data(
 
     past_exp_query = (
         db.query(
-            func.sum(Expense.amount)
+            func.sum(
+                Expense.amount
+            )
         )
         .filter(
             Expense.user_id == user_id,
             Expense.date < sd
         )
     )
+
+    # --------------------------------------------------------
+    # ACCOUNT FILTER FOR OPENING BALANCE
+    # --------------------------------------------------------
 
     if account_id is not None:
 
@@ -547,6 +677,10 @@ def fetch_monthly_data(
             Expense.account_id == account_id
         )
 
+    # --------------------------------------------------------
+    # CATEGORY FILTER FOR OPENING BALANCE
+    # --------------------------------------------------------
+
     if category:
 
         past_inc_query = past_inc_query.filter(
@@ -557,15 +691,25 @@ def fetch_monthly_data(
             Expense.category == category
         )
 
+    # --------------------------------------------------------
+    # TRANSACTION TYPE FILTER
+    # --------------------------------------------------------
+
     if tx_type:
 
         tx_type_lower = tx_type.lower()
 
         if tx_type_lower == "income":
-            past_exp_query = past_exp_query.filter(False)
+
+            past_exp_query = (
+                past_exp_query.filter(False)
+            )
 
         elif tx_type_lower == "expense":
-            past_inc_query = past_inc_query.filter(False)
+
+            past_inc_query = (
+                past_inc_query.filter(False)
+            )
 
     past_income = (
         past_inc_query.scalar()
@@ -591,10 +735,16 @@ def fetch_monthly_data(
     for transaction in transactions:
 
         if transaction["type"] == "Income":
-            running_balance += transaction["amount"]
+
+            running_balance += (
+                transaction["amount"]
+            )
 
         else:
-            running_balance -= transaction["amount"]
+
+            running_balance -= (
+                transaction["amount"]
+            )
 
         transaction["balance"] = round(
             running_balance,
@@ -622,49 +772,65 @@ def fetch_monthly_data(
     # ========================================================
 
     return {
-        "month": month,
-        "year": year,
-        "month_name": month_name[month],
+        "month":
+            month,
 
-        "start_date": sd.strftime(
-            "%d %b %Y"
-        ),
+        "year":
+            year,
 
-        "end_date": (
-            ed - datetime.timedelta(seconds=1)
-        ).strftime(
-            "%d %b %Y"
-        ),
+        "month_name":
+            month_name[month],
 
-        "opening_balance": round(
-            opening_balance,
-            2
-        ),
+        "start_date":
+            sd.strftime(
+                "%d %b %Y"
+            ),
 
-        "total_income": round(
-            inc_sum,
-            2
-        ),
+        "end_date":
+            (
+                ed
+                - datetime.timedelta(
+                    seconds=1
+                )
+            ).strftime(
+                "%d %b %Y"
+            ),
 
-        "total_expenses": round(
-            exp_sum,
-            2
-        ),
+        "opening_balance":
+            round(
+                opening_balance,
+                2
+            ),
 
-        "total_savings": round(
-            inc_sum - exp_sum,
-            2
-        ),
+        "total_income":
+            round(
+                inc_sum,
+                2
+            ),
 
-        "closing_balance": round(
-            running_balance,
-            2
-        ),
+        "total_expenses":
+            round(
+                exp_sum,
+                2
+            ),
 
-        "remaining_balance": round(
-            remaining,
-            2
-        ),
+        "total_savings":
+            round(
+                inc_sum - exp_sum,
+                2
+            ),
+
+        "closing_balance":
+            round(
+                running_balance,
+                2
+            ),
+
+        "remaining_balance":
+            round(
+                remaining,
+                2
+            ),
 
         "category_spending":
             category_spending,
@@ -732,13 +898,13 @@ def get_monthly_report(
 
 @router.get("/export/pdf")
 def export_monthly_report_pdf(
-    month: int = Query(
-        ...,
+    month: int | None = Query(
+        None,
         ge=1,
         le=12
     ),
-    year: int = Query(
-        ...,
+    year: int | None = Query(
+        None,
         ge=2000,
         le=2100
     ),
@@ -753,6 +919,21 @@ def export_monthly_report_pdf(
     ),
 ):
 
+    # --------------------------------------------------------
+    # RESOLVE PERIOD
+    # --------------------------------------------------------
+
+    month, year = resolve_report_period(
+        month,
+        year,
+        start_date,
+        end_date
+    )
+
+    # --------------------------------------------------------
+    # FETCH REPORT DATA
+    # --------------------------------------------------------
+
     data = fetch_monthly_data(
         current_user.id,
         month,
@@ -765,7 +946,21 @@ def export_monthly_report_pdf(
         db
     )
 
-    month_str = month_name[month]
+    # --------------------------------------------------------
+    # REPORT TITLE
+    # --------------------------------------------------------
+
+    if start_date and end_date:
+
+        report_period = (
+            f"{start_date} to {end_date}"
+        )
+
+    else:
+
+        report_period = (
+            f"{month_name[month]} {year}"
+        )
 
     buffer = io.BytesIO()
 
@@ -837,9 +1032,9 @@ def export_monthly_report_pdf(
 
     story = []
 
-    # --------------------------------------------------------
+    # ========================================================
     # HEADER
-    # --------------------------------------------------------
+    # ========================================================
 
     story.append(
         Paragraph(
@@ -850,8 +1045,8 @@ def export_monthly_report_pdf(
 
     story.append(
         Paragraph(
-            f"Monthly Financial Report — "
-            f"{month_str} {year}",
+            f"Financial Report — "
+            f"{report_period}",
             subtitle_style
         )
     )
@@ -881,9 +1076,9 @@ def export_monthly_report_pdf(
         )
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # SUMMARY
-    # --------------------------------------------------------
+    # ========================================================
 
     story.append(
         Paragraph(
@@ -935,7 +1130,9 @@ def export_monthly_report_pdf(
                 "BACKGROUND",
                 (0, 0),
                 (-1, 0),
-                colors.HexColor("#1E293B")
+                colors.HexColor(
+                    "#1E293B"
+                )
             ),
             (
                 "TEXTCOLOR",
@@ -959,14 +1156,18 @@ def export_monthly_report_pdf(
                 "BACKGROUND",
                 (0, 1),
                 (-1, 1),
-                colors.HexColor("#F8FAFC")
+                colors.HexColor(
+                    "#F8FAFC"
+                )
             ),
             (
                 "GRID",
                 (0, 0),
                 (-1, -1),
                 0.5,
-                colors.HexColor("#CBD5E1")
+                colors.HexColor(
+                    "#CBD5E1"
+                )
             ),
             (
                 "FONTNAME",
@@ -995,15 +1196,17 @@ def export_monthly_report_pdf(
         ])
     )
 
-    story.append(summary_table)
+    story.append(
+        summary_table
+    )
 
     story.append(
         Spacer(1, 15)
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # CATEGORY SPENDING
-    # --------------------------------------------------------
+    # ========================================================
 
     story.append(
         Paragraph(
@@ -1016,7 +1219,7 @@ def export_monthly_report_pdf(
 
         story.append(
             Paragraph(
-                "No expenses recorded for this month.",
+                "No expenses recorded for this period.",
                 body_style
             )
         )
@@ -1064,7 +1267,15 @@ def export_monthly_report_pdf(
                     "BACKGROUND",
                     (0, 0),
                     (-1, 0),
-                    colors.HexColor("#2563EB")
+                    colors.HexColor(
+                        "#2563EB"
+                    )
+                ),
+                (
+                    "TEXTCOLOR",
+                    (0, 0),
+                    (-1, 0),
+                    colors.white
                 ),
                 (
                     "ALIGN",
@@ -1077,7 +1288,9 @@ def export_monthly_report_pdf(
                     (0, 0),
                     (-1, -1),
                     0.5,
-                    colors.HexColor("#E2E8F0")
+                    colors.HexColor(
+                        "#E2E8F0"
+                    )
                 ),
                 (
                     "BOTTOMPADDING",
@@ -1094,15 +1307,17 @@ def export_monthly_report_pdf(
             ])
         )
 
-        story.append(cat_table)
+        story.append(
+            cat_table
+        )
 
     story.append(
         Spacer(1, 15)
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # BUDGET STATUS
-    # --------------------------------------------------------
+    # ========================================================
 
     story.append(
         Paragraph(
@@ -1149,7 +1364,9 @@ def export_monthly_report_pdf(
 
             status = (
                 "EXCEEDED"
-                if budget.get("is_exceeded")
+                if budget.get(
+                    "is_exceeded"
+                )
                 else "ON TRACK"
             )
 
@@ -1163,9 +1380,15 @@ def export_monthly_report_pdf(
                     ),
                     body_style
                 ),
-                f"₹{float(budget.get('monthly_limit', 0)):,.2f}",
-                f"₹{float(budget.get('spent_amount', 0)):,.2f}",
-                f"{budget.get('utilization_percentage', 0)}%",
+                (
+                    f"₹{float(budget.get('monthly_limit', 0)):,.2f}"
+                ),
+                (
+                    f"₹{float(budget.get('spent_amount', 0)):,.2f}"
+                ),
+                (
+                    f"{budget.get('utilization_percentage', 0)}%"
+                ),
                 status,
             ])
 
@@ -1186,7 +1409,15 @@ def export_monthly_report_pdf(
                     "BACKGROUND",
                     (0, 0),
                     (-1, 0),
-                    colors.HexColor("#0284C7")
+                    colors.HexColor(
+                        "#0284C7"
+                    )
+                ),
+                (
+                    "TEXTCOLOR",
+                    (0, 0),
+                    (-1, 0),
+                    colors.white
                 ),
                 (
                     "ALIGN",
@@ -1199,7 +1430,9 @@ def export_monthly_report_pdf(
                     (0, 0),
                     (-1, -1),
                     0.5,
-                    colors.HexColor("#E2E8F0")
+                    colors.HexColor(
+                        "#E2E8F0"
+                    )
                 ),
                 (
                     "BOTTOMPADDING",
@@ -1216,15 +1449,17 @@ def export_monthly_report_pdf(
             ])
         )
 
-        story.append(b_table)
+        story.append(
+            b_table
+        )
 
     story.append(
         Spacer(1, 15)
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # SAVINGS GOALS
-    # --------------------------------------------------------
+    # ========================================================
 
     story.append(
         Paragraph(
@@ -1275,7 +1510,9 @@ def export_monthly_report_pdf(
 
             g_data.append([
                 Paragraph(
-                    str(goal["title"]),
+                    str(
+                        goal["title"]
+                    ),
                     body_style
                 ),
                 str(
@@ -1313,7 +1550,15 @@ def export_monthly_report_pdf(
                     "BACKGROUND",
                     (0, 0),
                     (-1, 0),
-                    colors.HexColor("#0D9488")
+                    colors.HexColor(
+                        "#0D9488"
+                    )
+                ),
+                (
+                    "TEXTCOLOR",
+                    (0, 0),
+                    (-1, 0),
+                    colors.white
                 ),
                 (
                     "ALIGN",
@@ -1326,7 +1571,9 @@ def export_monthly_report_pdf(
                     (0, 0),
                     (-1, -1),
                     0.5,
-                    colors.HexColor("#E2E8F0")
+                    colors.HexColor(
+                        "#E2E8F0"
+                    )
                 ),
                 (
                     "BOTTOMPADDING",
@@ -1343,15 +1590,17 @@ def export_monthly_report_pdf(
             ])
         )
 
-        story.append(g_table)
+        story.append(
+            g_table
+        )
 
     story.append(
         Spacer(1, 15)
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # NOTIFICATIONS
-    # --------------------------------------------------------
+    # ========================================================
 
     story.append(
         Paragraph(
@@ -1364,7 +1613,7 @@ def export_monthly_report_pdf(
 
         story.append(
             Paragraph(
-                "No alerts generated for this month.",
+                "No alerts generated for this period.",
                 body_style
             )
         )
@@ -1417,14 +1666,24 @@ def export_monthly_report_pdf(
                     "BACKGROUND",
                     (0, 0),
                     (-1, 0),
-                    colors.HexColor("#475569")
+                    colors.HexColor(
+                        "#475569"
+                    )
+                ),
+                (
+                    "TEXTCOLOR",
+                    (0, 0),
+                    (-1, 0),
+                    colors.white
                 ),
                 (
                     "GRID",
                     (0, 0),
                     (-1, -1),
                     0.5,
-                    colors.HexColor("#E2E8F0")
+                    colors.HexColor(
+                        "#E2E8F0"
+                    )
                 ),
                 (
                     "BOTTOMPADDING",
@@ -1441,7 +1700,9 @@ def export_monthly_report_pdf(
             ])
         )
 
-        story.append(n_table)
+        story.append(
+            n_table
+        )
 
     # ========================================================
     # SIX-MONTH ANALYTICS
@@ -1455,23 +1716,35 @@ def export_monthly_report_pdf(
 
     monthly_trends = []
 
-    for i in range(5, -1, -1):
+    for i in range(
+        5,
+        -1,
+        -1
+    ):
 
-        current_month = now.month - i
+        current_month = (
+            now.month - i
+        )
+
         current_year = now.year
 
         while current_month <= 0:
+
             current_month += 12
             current_year -= 1
 
-        month_start, month_end = get_month_date_range(
-            current_month,
-            current_year
+        month_start, month_end = (
+            get_month_date_range(
+                current_month,
+                current_year
+            )
         )
 
         income_total = (
             db.query(
-                func.sum(Income.amount)
+                func.sum(
+                    Income.amount
+                )
             )
             .filter(
                 Income.user_id == current_user.id,
@@ -1484,7 +1757,9 @@ def export_monthly_report_pdf(
 
         expense_total = (
             db.query(
-                func.sum(Expense.amount)
+                func.sum(
+                    Expense.amount
+                )
             )
             .filter(
                 Expense.user_id == current_user.id,
@@ -1499,10 +1774,16 @@ def export_monthly_report_pdf(
             {
                 "label":
                     f"{month_name[current_month][:3]}",
+
                 "income":
-                    float(income_total),
+                    float(
+                        income_total
+                    ),
+
                 "expense":
-                    float(expense_total),
+                    float(
+                        expense_total
+                    ),
             }
         )
 
@@ -1542,6 +1823,7 @@ def export_monthly_report_pdf(
         chart.categoryAxis.labels.dy = -5
 
         chart.valueAxis.valueMin = 0
+
         chart.valueAxis.valueMax = (
             max_val
             if max_val > 0
@@ -1558,7 +1840,9 @@ def export_monthly_report_pdf(
 
         chart.lines[0].strokeWidth = 2
 
-        drawing.add(chart)
+        drawing.add(
+            chart
+        )
 
         return drawing
 
@@ -1594,6 +1878,7 @@ def export_monthly_report_pdf(
         chart.categoryAxis.labels.dy = -5
 
         chart.valueAxis.valueMin = 0
+
         chart.valueAxis.valueMax = (
             max_val
             if max_val > 0
@@ -1608,7 +1893,9 @@ def export_monthly_report_pdf(
             chart_color
         )
 
-        drawing.add(chart)
+        drawing.add(
+            chart
+        )
 
         return drawing
 
@@ -1653,7 +1940,9 @@ def export_monthly_report_pdf(
             ),
             draw_bar_chart(
                 "income",
-                colors.HexColor("#10b981"),
+                colors.HexColor(
+                    "#10b981"
+                ),
                 max_income
             ),
         ])
@@ -1667,7 +1956,9 @@ def export_monthly_report_pdf(
             ),
             draw_line_chart(
                 "expense",
-                colors.HexColor("#ef4444"),
+                colors.HexColor(
+                    "#ef4444"
+                ),
                 max_expense
             ),
         ])
@@ -1677,7 +1968,9 @@ def export_monthly_report_pdf(
     # PIE CHART
     # ========================================================
 
-    def draw_pie_chart(data_pairs):
+    def draw_pie_chart(
+        data_pairs
+    ):
 
         drawing = Drawing(
             400,
@@ -1719,6 +2012,7 @@ def export_monthly_report_pdf(
         for i in range(
             len(data_pairs)
         ):
+
             pie.slices[i].fillColor = (
                 colors.HexColor(
                     pie_colors[
@@ -1727,13 +2021,15 @@ def export_monthly_report_pdf(
                 )
             )
 
-        drawing.add(pie)
+        drawing.add(
+            pie
+        )
 
         return drawing
 
-    # --------------------------------------------------------
+    # ========================================================
     # EXPENSE PIE
-    # --------------------------------------------------------
+    # ========================================================
 
     story.append(
         Paragraph(
@@ -1765,12 +2061,14 @@ def export_monthly_report_pdf(
         ]
 
         story.append(
-            draw_pie_chart(pairs)
+            draw_pie_chart(
+                pairs
+            )
         )
 
-    # --------------------------------------------------------
+    # ========================================================
     # BUDGET PIE
-    # --------------------------------------------------------
+    # ========================================================
 
     story.append(
         Paragraph(
@@ -1850,7 +2148,9 @@ def export_monthly_report_pdf(
         ]
 
         story.append(
-            draw_pie_chart(pairs)
+            draw_pie_chart(
+                pairs
+            )
         )
 
     # ========================================================
@@ -1872,7 +2172,7 @@ def export_monthly_report_pdf(
 
         story.append(
             Paragraph(
-                "No transactions recorded for this month.",
+                "No transactions recorded for this period.",
                 body_style
             )
         )
@@ -1920,8 +2220,12 @@ def export_monthly_report_pdf(
                     ),
                     body_style
                 ),
-                f"₹{transaction['amount']:,.2f}",
-                f"₹{transaction['balance']:,.2f}",
+                (
+                    f"₹{transaction['amount']:,.2f}"
+                ),
+                (
+                    f"₹{transaction['balance']:,.2f}"
+                ),
             ])
 
         tx_table = Table(
@@ -1942,7 +2246,15 @@ def export_monthly_report_pdf(
                     "BACKGROUND",
                     (0, 0),
                     (-1, 0),
-                    colors.HexColor("#0F172A")
+                    colors.HexColor(
+                        "#0F172A"
+                    )
+                ),
+                (
+                    "TEXTCOLOR",
+                    (0, 0),
+                    (-1, 0),
+                    colors.white
                 ),
                 (
                     "ALIGN",
@@ -1955,7 +2267,9 @@ def export_monthly_report_pdf(
                     (0, 0),
                     (-1, -1),
                     0.5,
-                    colors.HexColor("#E2E8F0")
+                    colors.HexColor(
+                        "#E2E8F0"
+                    )
                 ),
                 (
                     "BOTTOMPADDING",
@@ -1972,20 +2286,33 @@ def export_monthly_report_pdf(
             ])
         )
 
-        story.append(tx_table)
+        story.append(
+            tx_table
+        )
 
     # ========================================================
     # BUILD PDF
     # ========================================================
 
-    doc.build(story)
+    doc.build(
+        story
+    )
 
     buffer.seek(0)
 
-    filename = (
-        f"BudgetBuddy_Report_"
-        f"{month_str}_{year}.pdf"
-    )
+    if start_date and end_date:
+
+        filename = (
+            "BudgetBuddy_Report_"
+            f"{start_date}_to_{end_date}.pdf"
+        )
+
+    else:
+
+        filename = (
+            "BudgetBuddy_Report_"
+            f"{month_name[month]}_{year}.pdf"
+        )
 
     return StreamingResponse(
         buffer,
@@ -2003,13 +2330,13 @@ def export_monthly_report_pdf(
 
 @router.get("/export/excel")
 def export_monthly_report_excel(
-    month: int = Query(
-        ...,
+    month: int | None = Query(
+        None,
         ge=1,
         le=12
     ),
-    year: int = Query(
-        ...,
+    year: int | None = Query(
+        None,
         ge=2000,
         le=2100
     ),
@@ -2025,10 +2352,26 @@ def export_monthly_report_excel(
 ):
 
     import openpyxl
+
     from openpyxl.styles import (
         Font,
-        PatternFill
+        PatternFill,
     )
+
+    # --------------------------------------------------------
+    # RESOLVE PERIOD
+    # --------------------------------------------------------
+
+    month, year = resolve_report_period(
+        month,
+        year,
+        start_date,
+        end_date
+    )
+
+    # --------------------------------------------------------
+    # FETCH REPORT DATA
+    # --------------------------------------------------------
 
     data = fetch_monthly_data(
         current_user.id,
@@ -2042,20 +2385,36 @@ def export_monthly_report_excel(
         db
     )
 
-    month_str = month_name[month]
+    # --------------------------------------------------------
+    # REPORT PERIOD
+    # --------------------------------------------------------
+
+    if start_date and end_date:
+
+        report_period = (
+            f"{start_date} to {end_date}"
+        )
+
+    else:
+
+        report_period = (
+            f"{month_name[month]} {year}"
+        )
 
     workbook = openpyxl.Workbook()
 
-    # --------------------------------------------------------
+    # ========================================================
     # HELPERS
-    # --------------------------------------------------------
+    # ========================================================
 
     def format_header(
         worksheet,
         headers
     ):
 
-        worksheet.append(headers)
+        worksheet.append(
+            headers
+        )
 
         header_fill = PatternFill(
             start_color="1F4E78",
@@ -2070,7 +2429,9 @@ def export_monthly_report_excel(
                 color="FFFFFF"
             )
 
-            cell.fill = header_fill
+            cell.fill = (
+                header_fill
+            )
 
     def auto_adjust_columns(
         worksheet
@@ -2100,12 +2461,16 @@ def export_monthly_report_excel(
                     )
 
                 except Exception:
+
                     pass
 
             worksheet.column_dimensions[
                 column_letter
             ].width = (
-                max_length + 2
+                min(
+                    max_length + 2,
+                    60
+                )
             )
 
     # ========================================================
@@ -2117,8 +2482,8 @@ def export_monthly_report_excel(
     ws_summary.title = "Summary"
 
     ws_summary["A1"] = (
-        f"BudgetBuddy Financial Report "
-        f"— {month_str} {year}"
+        "BudgetBuddy Financial Report "
+        f"— {report_period}"
     )
 
     ws_summary["A1"].font = Font(
@@ -2129,6 +2494,10 @@ def export_monthly_report_excel(
     ws_summary["A2"] = (
         f"User: {current_user.full_name} "
         f"({current_user.email})"
+    )
+
+    ws_summary["A3"] = (
+        f"Report Period: {report_period}"
     )
 
     ws_summary["A4"] = (
@@ -2299,7 +2668,9 @@ def export_monthly_report_excel(
 
         status = (
             "EXCEEDED"
-            if budget.get("is_exceeded")
+            if budget.get(
+                "is_exceeded"
+            )
             else "ON TRACK"
         )
 
@@ -2316,7 +2687,9 @@ def export_monthly_report_excel(
                 "spent_amount",
                 0
             ),
-            f"{budget.get('utilization_percentage', 0)}%",
+            (
+                f"{budget.get('utilization_percentage', 0)}%"
+            ),
             status,
         ])
 
@@ -2395,19 +2768,71 @@ def export_monthly_report_excel(
     )
 
     # ========================================================
+    # TRANSACTIONS
+    # ========================================================
+
+    ws_transactions = workbook.create_sheet(
+        title="Transactions"
+    )
+
+    format_header(
+        ws_transactions,
+        [
+            "Date",
+            "Time",
+            "Type",
+            "Description",
+            "Amount",
+            "Debit",
+            "Credit",
+            "Balance",
+        ]
+    )
+
+    for transaction in data[
+        "transactions"
+    ]:
+
+        ws_transactions.append([
+            transaction["date_str"],
+            transaction["time_str"],
+            transaction["type"],
+            transaction["description"],
+            transaction["amount"],
+            transaction["debit"],
+            transaction["credit"],
+            transaction["balance"],
+        ])
+
+    auto_adjust_columns(
+        ws_transactions
+    )
+
+    # ========================================================
     # SAVE EXCEL
     # ========================================================
 
     buffer = io.BytesIO()
 
-    workbook.save(buffer)
+    workbook.save(
+        buffer
+    )
 
     buffer.seek(0)
 
-    filename = (
-        f"BudgetBuddy_Report_"
-        f"{month_str}_{year}.xlsx"
-    )
+    if start_date and end_date:
+
+        filename = (
+            "BudgetBuddy_Report_"
+            f"{start_date}_to_{end_date}.xlsx"
+        )
+
+    else:
+
+        filename = (
+            "BudgetBuddy_Report_"
+            f"{month_name[month]}_{year}.xlsx"
+        )
 
     return StreamingResponse(
         buffer,
@@ -2436,13 +2861,15 @@ def get_financial_reports(
 
     now = datetime.datetime.utcnow()
 
-    # --------------------------------------------------------
+    # ========================================================
     # LIFETIME TOTALS
-    # --------------------------------------------------------
+    # ========================================================
 
     total_income = (
         db.query(
-            func.sum(Income.amount)
+            func.sum(
+                Income.amount
+            )
         )
         .filter(
             Income.user_id == current_user.id
@@ -2453,7 +2880,9 @@ def get_financial_reports(
 
     total_expenses = (
         db.query(
-            func.sum(Expense.amount)
+            func.sum(
+                Expense.amount
+            )
         )
         .filter(
             Expense.user_id == current_user.id
@@ -2476,20 +2905,30 @@ def get_financial_reports(
     )
 
     savings_rate = (
-        (net_savings / total_income) * 100
+        (
+            net_savings
+            / total_income
+        ) * 100
         if total_income > 0
         else 0
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # LAST 6 MONTHS
-    # --------------------------------------------------------
+    # ========================================================
 
     monthly_trends = []
 
-    for i in range(5, -1, -1):
+    for i in range(
+        5,
+        -1,
+        -1
+    ):
 
-        current_month = now.month - i
+        current_month = (
+            now.month - i
+        )
+
         current_year = now.year
 
         while current_month <= 0:
@@ -2506,7 +2945,9 @@ def get_financial_reports(
 
         income_total = (
             db.query(
-                func.sum(Income.amount)
+                func.sum(
+                    Income.amount
+                )
             )
             .filter(
                 Income.user_id == current_user.id,
@@ -2519,7 +2960,9 @@ def get_financial_reports(
 
         expense_total = (
             db.query(
-                func.sum(Expense.amount)
+                func.sum(
+                    Expense.amount
+                )
             )
             .filter(
                 Expense.user_id == current_user.id,
@@ -2549,8 +2992,10 @@ def get_financial_reports(
                     f"{current_year}-{current_month:02d}",
 
                 "month_label":
-                    f"{month_name[current_month][:3]} "
-                    f"{current_year}",
+                    (
+                        f"{month_name[current_month][:3]} "
+                        f"{current_year}"
+                    ),
 
                 "income":
                     income_total,
@@ -2574,9 +3019,9 @@ def get_financial_reports(
             }
         )
 
-    # --------------------------------------------------------
+    # ========================================================
     # CATEGORY EXPENSES
-    # --------------------------------------------------------
+    # ========================================================
 
     category_rows = (
         db.query(
@@ -2624,7 +3069,10 @@ def get_financial_reports(
             )
 
             percentage = (
-                (amount / total_expenses) * 100
+                (
+                    amount
+                    / total_expenses
+                ) * 100
                 if total_expenses > 0
                 else 0
             )
@@ -2649,9 +3097,9 @@ def get_financial_reports(
                 }
             )
 
-    # --------------------------------------------------------
+    # ========================================================
     # INCOME SOURCES
-    # --------------------------------------------------------
+    # ========================================================
 
     source_rows = (
         db.query(
@@ -2699,7 +3147,10 @@ def get_financial_reports(
             )
 
             percentage = (
-                (amount / total_income) * 100
+                (
+                    amount
+                    / total_income
+                ) * 100
                 if total_income > 0
                 else 0
             )
@@ -2724,9 +3175,9 @@ def get_financial_reports(
                 }
             )
 
-    # --------------------------------------------------------
+    # ========================================================
     # ACCOUNT CASH FLOW
-    # --------------------------------------------------------
+    # ========================================================
 
     accounts = (
         db.query(Account)
@@ -2803,14 +3254,16 @@ def get_financial_reports(
                     account_expense,
 
                 "net_flow":
-                    account_income
-                    - account_expense,
+                    (
+                        account_income
+                        - account_expense
+                    ),
             }
         )
 
-    # --------------------------------------------------------
+    # ========================================================
     # AVERAGES
-    # --------------------------------------------------------
+    # ========================================================
 
     active_months = max(
         len(
@@ -2827,17 +3280,24 @@ def get_financial_reports(
     )
 
     avg_monthly_income = round(
-        total_income / active_months,
+        total_income
+        / active_months,
         2
     )
 
     avg_monthly_expense = round(
-        total_expenses / active_months,
+        total_expenses
+        / active_months,
         2
     )
 
+    # ========================================================
+    # FINAL RESPONSE
+    # ========================================================
+
     return {
         "kpis": {
+
             "total_income":
                 total_income,
 
@@ -2909,6 +3369,10 @@ def get_yearly_report(
         1
     )
 
+    # ========================================================
+    # INCOMES
+    # ========================================================
+
     incomes = (
         db.query(Income)
         .filter(
@@ -2919,6 +3383,10 @@ def get_yearly_report(
         .all()
     )
 
+    # ========================================================
+    # EXPENSES
+    # ========================================================
+
     expenses = (
         db.query(Expense)
         .filter(
@@ -2928,6 +3396,10 @@ def get_yearly_report(
         )
         .all()
     )
+
+    # ========================================================
+    # TOTALS
+    # ========================================================
 
     total_income = sum(
         float(
@@ -2948,9 +3420,9 @@ def get_yearly_report(
         - total_expenses
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # MONTHLY BREAKDOWN
-    # --------------------------------------------------------
+    # ========================================================
 
     monthly_data = {
         month_number: {
@@ -3011,9 +3483,9 @@ def get_yearly_report(
             }
         )
 
-    # --------------------------------------------------------
+    # ========================================================
     # CATEGORY BREAKDOWN
-    # --------------------------------------------------------
+    # ========================================================
 
     category_totals = {}
 
@@ -3043,8 +3515,10 @@ def get_yearly_report(
     ):
 
         percentage = (
-            (amount / total_expenses)
-            * 100
+            (
+                amount
+                / total_expenses
+            ) * 100
             if total_expenses > 0
             else 0
         )
@@ -3068,9 +3542,9 @@ def get_yearly_report(
             }
         )
 
-    # --------------------------------------------------------
+    # ========================================================
     # ACCOUNT BREAKDOWN
-    # --------------------------------------------------------
+    # ========================================================
 
     account_totals = {}
 
@@ -3083,7 +3557,10 @@ def get_yearly_report(
                 or "Unknown Account"
             )
 
-            if account_name not in account_totals:
+            if (
+                account_name
+                not in account_totals
+            ):
 
                 account_totals[
                     account_name
@@ -3107,7 +3584,10 @@ def get_yearly_report(
                 or "Unknown Account"
             )
 
-            if account_name not in account_totals:
+            if (
+                account_name
+                not in account_totals
+            ):
 
                 account_totals[
                     account_name
@@ -3146,6 +3626,10 @@ def get_yearly_report(
                     ),
             }
         )
+
+    # ========================================================
+    # FINAL RESPONSE
+    # ========================================================
 
     return {
         "year":

@@ -29,8 +29,11 @@ export default function Profile() {
 
   // Delete Account Modal fields
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteMode, setDeleteMode] = useState('standard'); // 'standard' or 'forgot_otp'
   const [deletePassword, setDeletePassword] = useState('');
+  const [deleteOtp, setDeleteOtp] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [sendingDeleteOtp, setSendingDeleteOtp] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
   useEffect(() => {
@@ -168,24 +171,57 @@ export default function Profile() {
     setPasswordMode('standard');
   };
 
+  const handleSendDeleteOTP = async () => {
+    setDeleteError('');
+    setSendingDeleteOtp(true);
+    try {
+      await api.post('/auth/forgot-password/send-otp', { email: user?.email });
+      showToast('info', 'Verification OTP sent to your email.');
+      setDeleteMode('forgot_otp');
+    } catch (err) {
+      setDeleteError(err.response?.data?.detail || 'Failed to send OTP.');
+    } finally {
+      setSendingDeleteOtp(false);
+    }
+  };
+
   const handleDeleteAccount = async (e) => {
     e.preventDefault();
     setDeleteError('');
-    if (!deletePassword) {
-      setDeleteError('Please enter your current password to confirm account deletion.');
-      return;
+    
+    if (deleteMode === 'standard') {
+      if (!deletePassword) {
+        setDeleteError('Please enter your current password to confirm account deletion.');
+        return;
+      }
+    } else {
+      if (!deleteOtp || deleteOtp.length !== 6) {
+        setDeleteError('Please enter a 6-digit OTP code.');
+        return;
+      }
     }
 
     setDeleting(true);
     try {
+      if (deleteMode === 'forgot_otp') {
+        // First verify the OTP
+        await api.post('/auth/forgot-password/verify-otp', {
+          email: user?.email,
+          otp: deleteOtp.trim(),
+        });
+      }
+
       await api.delete('/auth/me', {
-        data: { password: deletePassword }
+        data: { 
+          password: deleteMode === 'standard' ? deletePassword : null,
+          otp: deleteMode === 'forgot_otp' ? deleteOtp : null
+        }
       });
       showToast('info', 'Your account has been deleted successfully.');
       logout();
       navigate('/login');
     } catch (err) {
-      setDeleteError(err.response?.data?.detail || 'Incorrect password. Account deletion canceled.');
+      setDeleteError(err.response?.data?.detail || 'Account deletion failed.');
     } finally {
       setDeleting(false);
     }
@@ -282,6 +318,13 @@ export default function Profile() {
                 {user?.role === 'admin' ? 'Administrator' : user?.role === 'premium' ? 'Premium User' : 'Normal User'}
               </span>
             </div>
+            {user?.role === 'user' && (
+              <div className="mt-4 flex justify-center">
+                <button onClick={() => window.location.href='/pricing'} className="w-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-900 font-bold px-4 py-3 rounded-xl text-sm flex items-center justify-center space-x-2 shadow-lg transition-all">
+                  <span>Upgrade to Premium ✨</span>
+                </button>
+              </div>
+            )}
 
             <div className="flex items-center justify-between p-3 rounded-xl bg-slate-900/80 border border-slate-800">
               <span className="text-slate-400">Role</span>
@@ -412,11 +455,10 @@ export default function Profile() {
               <span>Upgrade to Premium</span>
             </h3>
             <p className="text-slate-300 text-sm">
-              Unlock advanced analytics, AI financial assistant, PDF/Excel report exports, and premium dashboard insights.
+              Unlock advanced analytics, PDF/Excel report exports, and premium dashboard insights.
             </p>
             <ul className="text-xs text-slate-400 space-y-1 mt-2 list-disc list-inside">
               <li>Advanced monthly trend charts & spending analysis</li>
-              <li>AI-based spending analysis & personalized budgeting</li>
               <li>Download detailed financial reports as PDF & Excel</li>
               <li>Advanced budget utilization & saving goal analytics</li>
             </ul>
@@ -444,7 +486,9 @@ export default function Profile() {
 
         <button
           onClick={() => {
+            setDeleteMode('standard');
             setDeletePassword('');
+            setDeleteOtp('');
             setDeleteError('');
             setShowDeleteModal(true);
           }}
@@ -627,17 +671,55 @@ export default function Profile() {
                 </div>
               )}
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">Enter Current Password to Confirm</label>
-                <input
-                  type="password"
-                  required
-                  value={deletePassword}
-                  onChange={(e) => setDeletePassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-slate-950 border border-slate-700/80 focus:border-red-500 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none"
-                />
-              </div>
+              {deleteMode === 'standard' ? (
+                <div>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="block text-xs font-semibold text-slate-300">Enter Current Password to Confirm</label>
+                    <button
+                      type="button"
+                      disabled={sendingDeleteOtp}
+                      onClick={handleSendDeleteOTP}
+                      className="text-[11px] font-semibold text-blue-400 hover:text-blue-300 hover:underline flex items-center space-x-1"
+                    >
+                      <MailCheck className="w-3 h-3" />
+                      <span>{sendingDeleteOtp ? 'Sending OTP...' : 'Forgot Password?'}</span>
+                    </button>
+                  </div>
+                  <input
+                    type="password"
+                    required
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-slate-950 border border-slate-700/80 focus:border-red-500 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none"
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs mb-3">
+                    OTP code has been sent to <strong>{user?.email}</strong>.
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">6-Digit Verification OTP</label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      required
+                      value={deleteOtp}
+                      onChange={(e) => setDeleteOtp(e.target.value.replace(/\D/g, ''))}
+                      placeholder="123456"
+                      className="w-full bg-slate-950 border border-slate-700/80 focus:border-red-500 rounded-xl px-4 py-2.5 text-white text-sm tracking-widest text-center font-mono font-bold focus:outline-none"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteMode('standard')}
+                    className="text-xs text-slate-400 hover:text-white underline block text-center pt-2 w-full"
+                  >
+                    Back to Password
+                  </button>
+                </>
+              )}
 
               <div className="flex justify-end space-x-3 pt-2">
                 <button

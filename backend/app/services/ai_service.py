@@ -14,7 +14,7 @@ from app.config import settings
 GEMINI_API_KEY = getattr(settings, "GEMINI_API_KEY", None)
 
 # Stable Gemini model currently supported by Google.
-GEMINI_MODEL = "gemini-3.6-flash"
+GEMINI_MODEL = "gemini-1.5-flash"
 
 _client = None
 

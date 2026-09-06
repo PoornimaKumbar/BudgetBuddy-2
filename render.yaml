@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: budgetbuddy-api
+    env: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: FRONTEND_URL
+        value: 'http://localhost:5173'
+      - key: SECRET_KEY
+        generateValue: true
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: '587'
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: EMAILS_FROM_EMAIL
+        sync: false
+      - key: EMAILS_FROM_NAME
+        value: BudgetBuddy
+      - key: ADMIN_REGISTRATION_KEY
+        generateValue: true

@@ -27,7 +27,7 @@ export default function Pricing() {
       price: '₹99',
       period: '/month',
       description: 'Users who want flexibility',
-      features: ['All Free features', 'Unlimited accounts', 'AI Financial Assistant', 'Export to PDF/Excel', 'Advanced Analytics'],
+      features: ['All Free features', 'Unlimited accounts', 'Premium Dashboard', 'Export to PDF/Excel', 'Advanced Analytics'],
       buttonText: 'Upgrade to Monthly',
       isCurrent: false,
       popular: false
@@ -91,7 +91,7 @@ export default function Pricing() {
         </div>
         <h1 className="text-3xl font-black text-white">Upgrade to Premium</h1>
         <p className="text-slate-400 mt-3">
-          Unlock the full power of BudgetBuddy with our AI assistant, advanced analytics, and unlimited accounts.
+          Unlock the full power of BudgetBuddy with our advanced analytics, premium dashboard, and unlimited accounts.
         </p>
       </div>
 

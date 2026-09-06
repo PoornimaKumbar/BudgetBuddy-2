@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
 
+import {
+  CategoryPieChart,
+  ExpenseLineChart
+} from '../components/Charts';
+
+
 export default function AdminDashboard() {
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState(null);
@@ -427,46 +433,15 @@ export default function AdminDashboard() {
 
 
               {systemAnalytics.spending_by_category?.length > 0 ? (
-                <div className="space-y-4">
-
-                  {systemAnalytics.spending_by_category.map(
-                    (item, index) => (
-                      <div key={`${item.category}-${index}`}>
-
-                        <div className="flex justify-between mb-1">
-
-                          <span className="text-sm text-slate-300">
-                            {item.category}
-                          </span>
-
-                          <span className="text-sm text-slate-400">
-                            {formatCurrency(item.amount)}
-                            {' '}
-                            ({Number(item.percentage || 0).toFixed(2)}%)
-                          </span>
-
-                        </div>
-
-                        <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
-
-                          <div
-                            className="h-full bg-blue-500 rounded-full"
-                            style={{
-                              width: `${Math.min(
-                                Number(item.percentage || 0),
-                                100
-                              )}%`
-                            }}
+                        <div className="h-64 sm:h-80 w-full">
+                          <CategoryPieChart 
+                            data={systemAnalytics.spending_by_category.map(c => ({
+                              name: c.category || c.name || 'Unknown',
+                              value: c.amount || c.value || 0
+                            }))} 
                           />
-
                         </div>
-
-                      </div>
-                    )
-                  )}
-
-                </div>
-              ) : (
+                      ) : (
                 <p className="text-slate-500">
                   No system spending data available.
                 </p>
@@ -493,69 +468,15 @@ export default function AdminDashboard() {
 
 
               {systemAnalytics.monthly_trend?.length > 0 ? (
-                <div className="overflow-x-auto">
-
-                  <table className="w-full text-left text-sm">
-
-                    <thead className="bg-slate-800 text-slate-300 uppercase text-xs">
-                      <tr>
-                        <th className="p-3">
-                          Month
-                        </th>
-
-                        <th className="p-3">
-                          Income
-                        </th>
-
-                        <th className="p-3">
-                          Expenses
-                        </th>
-
-                        <th className="p-3">
-                          Net Savings
-                        </th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-
-                      {systemAnalytics.monthly_trend.map(
-                        (item, index) => (
-                          <tr
-                            key={`${item.month}-${index}`}
-                            className="border-b border-slate-800"
-                          >
-                            <td className="p-3 text-slate-200 font-medium">
-                              {item.month}
-                            </td>
-
-                            <td className="p-3 text-emerald-400">
-                              {formatCurrency(item.income)}
-                            </td>
-
-                            <td className="p-3 text-red-400">
-                              {formatCurrency(item.expenses)}
-                            </td>
-
-                            <td
-                              className={`p-3 font-semibold ${
-                                Number(item.net) >= 0
-                                  ? 'text-blue-400'
-                                  : 'text-red-400'
-                              }`}
-                            >
-                              {formatCurrency(item.net)}
-                            </td>
-                          </tr>
-                        )
-                      )}
-
-                    </tbody>
-
-                  </table>
-
-                </div>
-              ) : (
+                        <div className="h-64 sm:h-80 w-full">
+                          <ExpenseLineChart 
+                            data={systemAnalytics.monthly_trend.map(m => ({
+                              date: m.month || m.date || 'Unknown',
+                              amount: m.total_expenses || m.amount || 0
+                            }))} 
+                          />
+                        </div>
+                      ) : (
                 <p className="text-slate-500">
                   No monthly system data available.
                 </p>

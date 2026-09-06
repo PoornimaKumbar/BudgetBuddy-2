@@ -30,7 +30,15 @@ export default function ForgotPassword() {
       showToast('info', 'OTP sent to your registered email.');
       setStep(2);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to send reset OTP. Please verify your email.');
+      if (err.response?.data?.detail === 'unverified_email') {
+        showToast('warning', 'Email not verified. Redirecting to verification...');
+        try {
+          await api.post('/auth/send-otp', { email: email.trim(), purpose: 'email_verification' });
+        } catch (e) {}
+        navigate('/verify-email', { state: { email: email.trim() } });
+      } else {
+        setError(err.response?.data?.detail || 'Failed to send reset OTP. Please verify your email.');
+      }
     } finally {
       setLoading(false);
     }

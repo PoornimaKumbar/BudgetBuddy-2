@@ -326,6 +326,9 @@ def forgot_password_send_otp(payload: schemas.ForgotPasswordSendOTP, db: Session
     if not user:
         raise HTTPException(status_code=404, detail="User with this email was not found")
 
+    if not user.is_email_verified:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="unverified_email")
+
     latest_otp = (
         db.query(EmailOTP)
         .filter(EmailOTP.user_id == user.id, EmailOTP.purpose == "password_reset")
@@ -456,11 +459,27 @@ def delete_account(
     db: Session = Depends(get_db),
     current_user: User = Depends(security.get_current_user)
 ):
-    if not security.verify_password(payload.password, current_user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Incorrect password. Account deletion canceled."
+    if not payload.password and not payload.otp:
+        raise HTTPException(status_code=400, detail="Password or OTP is required for account deletion.")
+
+    if payload.password:
+        if not security.verify_password(payload.password, current_user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Incorrect password. Account deletion canceled."
+            )
+    elif payload.otp:
+        latest_otp = (
+            db.query(EmailOTP)
+            .filter(EmailOTP.user_id == current_user.id, EmailOTP.purpose == "password_reset")
+            .order_by(EmailOTP.created_at.desc())
+            .first()
         )
+        if not latest_otp or not latest_otp.verified_at:
+            raise HTTPException(status_code=400, detail="Verified OTP required to delete account.")
+            
+        if (datetime.utcnow() - latest_otp.verified_at) > timedelta(minutes=15):
+            raise HTTPException(status_code=400, detail="OTP session expired. Please request a new OTP.")
 
     db.delete(current_user)
     db.commit()
