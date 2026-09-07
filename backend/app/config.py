@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     
     ADMIN_REGISTRATION_KEY: str = "budgetbuddy_admin_secret"
     GEMINI_API_KEY: str = ""
-    RESEND_API_KEY: str = ""
+    SENDLIB_API_KEY: str = ""
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"),
