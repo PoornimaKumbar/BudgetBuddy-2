@@ -3,6 +3,7 @@ import requests
 
 from app.config import settings
 
+
 logger = logging.getLogger("budgetbuddy_email")
 logger.setLevel(logging.INFO)
 
@@ -12,57 +13,57 @@ SENDLIB_API_URL = "https://sendlib.samueltuoyo.com/api/send"
 def send_otp_email(
     to_email: str,
     otp_code: str,
-    purpose: str = "email_verification"
+    purpose: str = "email_verification",
 ) -> bool:
     """
-    Sends BudgetBuddy OTP using Sendlib.
+    Send an OTP email through Sendlib.
 
-    Supports:
-      - email_verification
-      - password_reset
+    Sendlib uses a connected Gmail account, so users can receive
+    OTP emails without BudgetBuddy needing its own email domain.
 
-    Sendlib sends the email through the connected Gmail account.
+    Returns:
+        True  -> email request succeeded or development fallback is used
+        False -> reserved for future strict failure handling
     """
 
     is_reset = purpose == "password_reset"
-    action_label = "Password Reset" if is_reset else "Email Verification"
+
+    if is_reset:
+        action_label = "Password Reset"
+    else:
+        action_label = "Email Verification"
 
     logger.info(
-        f"🔑 BudgetBuddy OTP generated ({action_label}) "
-        f"for {to_email}. "
-        f"Expires in {settings.OTP_EXPIRE_MINUTES} minutes."
+        f"📧 Preparing {action_label} OTP email for {to_email}"
     )
 
     # ---------------------------------------------------------
-    # CHECK SENDLIB API KEY
+    # Get API key and remove accidental spaces/newlines
     # ---------------------------------------------------------
+    sendlib_api_key = (settings.SENDLIB_API_KEY or "").strip()
 
-    if not settings.SENDLIB_API_KEY:
+    if not sendlib_api_key:
         logger.error("❌ SENDLIB_API_KEY is not configured.")
-
-        # Development fallback
         logger.warning(
             f"🔐 DEVELOPMENT OTP for {to_email}: {otp_code}"
         )
-
         return True
 
+    # ---------------------------------------------------------
+    # Send OTP through Sendlib
+    # ---------------------------------------------------------
     try:
-        # -----------------------------------------------------
-        # SEND EMAIL USING SENDLIB OTP TEMPLATE
-        # -----------------------------------------------------
-
         payload = {
             "template": "otp",
             "to": to_email,
             "data": {
                 "code": otp_code,
-                "name": "BudgetBuddy User"
-            }
+                "name": "BudgetBuddy User",
+            },
         }
 
         headers = {
-            "Authorization": f"Bearer {settings.SENDLIB_API_KEY}",
+            "Authorization": f"Bearer {sendlib_api_key}",
             "Content-Type": "application/json",
         }
 
@@ -74,11 +75,9 @@ def send_otp_email(
         )
 
         # -----------------------------------------------------
-        # SUCCESS
+        # Successful Sendlib response
         # -----------------------------------------------------
-
         if 200 <= response.status_code < 300:
-
             logger.info(
                 f"✅ BudgetBuddy OTP email sent successfully "
                 f"to {to_email} through Sendlib."
@@ -91,15 +90,25 @@ def send_otp_email(
             return True
 
         # -----------------------------------------------------
-        # SENDLIB ERROR
+        # Sendlib returned an error
         # -----------------------------------------------------
-
         logger.error(
             f"❌ Sendlib returned HTTP {response.status_code}: "
             f"{response.text}"
         )
 
-        # Development fallback
+        # Development fallback so registration itself doesn't fail
+        logger.warning(
+            f"🔐 DEVELOPMENT OTP for {to_email}: {otp_code}"
+        )
+
+        return True
+
+    except requests.exceptions.RequestException as e:
+        logger.exception(
+            f"❌ Sendlib email delivery failed for {to_email}: {e}"
+        )
+
         logger.warning(
             f"🔐 DEVELOPMENT OTP for {to_email}: {otp_code}"
         )
@@ -107,17 +116,10 @@ def send_otp_email(
         return True
 
     except Exception as e:
-
-        # -----------------------------------------------------
-        # CONNECTION / REQUEST ERROR
-        # -----------------------------------------------------
-
         logger.exception(
-            f"❌ Sendlib email delivery failed for "
-            f"{to_email}: {e}"
+            f"❌ Unexpected email delivery error for {to_email}: {e}"
         )
 
-        # Development fallback
         logger.warning(
             f"🔐 DEVELOPMENT OTP for {to_email}: {otp_code}"
         )
